@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 
 const BASELINE = {
-  rent: 2400,
+  rent: 2350,
   rentGrowth: 3,
   vacancyRate: 5,
   repairsRate: 0,
