@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 const BASELINE = {
   rent: 2350,
   rentGrowth: 3,
   vacancyRate: 5,
+  vacancyMonths: 0,
   repairsRate: 0,
   capexRate: 0,
   managementRate: 0,
@@ -61,7 +62,9 @@ function calculateMonthlyRows(inputs, months) {
     const growthYears = yearNumber - 1;
 
     const grossRent = toNumber(inputs.rent) * Math.pow(1 + toNumber(inputs.rentGrowth) / 100, growthYears);
-    const vacancy = grossRent * (toNumber(inputs.vacancyRate) / 100);
+    const vacancyMonths = Math.min(Math.max(toNumber(inputs.vacancyMonths), 0), months);
+    const vacancyPct = vacancyMonths > 0 ? (vacancyMonths / months) * 100 : toNumber(inputs.vacancyRate);
+    const vacancy = grossRent * (vacancyPct / 100);
     const effectiveRent = grossRent - vacancy;
 
     const hoaCost = toNumber(inputs.hoa) * Math.pow(1 + toNumber(inputs.hoaGrowth) / 100, growthYears);
@@ -133,10 +136,14 @@ function calculateAnnualRows(monthlyRows, years) {
   });
 }
 
-function calculateBreakEvenRent(inputs) {
+function calculateBreakEvenRent(inputs, totalMonths = 120) {
+  const vacancyPct = toNumber(inputs.vacancyMonths) > 0
+    ? Math.min(toNumber(inputs.vacancyMonths), totalMonths) / totalMonths
+    : toNumber(inputs.vacancyRate) / 100;
+
   const variablePct =
-    (toNumber(inputs.vacancyRate) +
-      toNumber(inputs.repairsRate) +
+    vacancyPct +
+    (toNumber(inputs.repairsRate) +
       toNumber(inputs.capexRate) +
       toNumber(inputs.managementRate)) /
     100;
@@ -221,12 +228,31 @@ function calculateReturnMetrics(inputs, annualRows, years) {
   };
 }
 
+const STORAGE_KEY = 'gilpinCashFlowState';
+
+function loadSavedState() {
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (!saved) return null;
+    const parsed = JSON.parse(saved);
+    return {
+      inputs: { ...BASELINE, ...parsed.inputs },
+      years: typeof parsed.years === 'number' ? Math.max(1, Math.min(40, parsed.years)) : 10,
+      view: parsed.view === 'monthly' ? 'monthly' : 'annual',
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
 export default function App() {
-  const [inputs, setInputs] = useState(BASELINE);
-  const [view, setView] = useState('annual');
-  const [years, setYears] = useState(10);
+  const savedState = typeof window !== 'undefined' ? loadSavedState() : null;
+  const [inputs, setInputs] = useState(savedState?.inputs ?? BASELINE);
+  const [view, setView] = useState(savedState?.view ?? 'annual');
+  const [years, setYears] = useState(savedState?.years ?? 10);
 
   const totalMonths = years * 12;
+  const maxVacancyMonths = totalMonths;
   const monthlyRows = useMemo(() => calculateMonthlyRows(inputs, totalMonths), [inputs, totalMonths]);
   const annualRows = useMemo(() => calculateAnnualRows(monthlyRows, years), [monthlyRows, years]);
 
@@ -241,18 +267,49 @@ export default function App() {
     };
   }, [monthlyRows]);
 
-  const breakEvenRent = useMemo(() => calculateBreakEvenRent(inputs), [inputs]);
+  const breakEvenRent = useMemo(() => calculateBreakEvenRent(inputs, totalMonths), [inputs, totalMonths]);
   const returnMetrics = useMemo(() => calculateReturnMetrics(inputs, annualRows, years), [inputs, annualRows, years]);
   const chartRows = view === 'annual' ? annualRows : monthlyRows;
 
   function updateInput(key, value) {
-    setInputs((current) => ({ ...current, [key]: toNumber(value) }));
+    const nextValue = toNumber(value);
+    setInputs((current) => {
+      if (key === 'vacancyMonths') {
+        return { ...current, [key]: Math.max(0, Math.min(nextValue, maxVacancyMonths)) };
+      }
+      return { ...current, [key]: nextValue };
+    });
   }
+
+  function updateYears(value) {
+    const nextYears = Math.max(1, Math.min(40, Math.round(toNumber(value, 10))));
+    setYears(nextYears);
+    setInputs((current) => ({
+      ...current,
+      vacancyMonths: Math.min(current.vacancyMonths, nextYears * 12),
+    }));
+  }
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ inputs, years, view })
+      );
+    } catch (error) {
+      // ignore localStorage errors
+    }
+  }, [inputs, years, view]);
 
   function resetBaseline() {
     setInputs(BASELINE);
     setYears(10);
     setView('annual');
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch (error) {
+      // ignore localStorage errors
+    }
   }
 
   return (
@@ -283,6 +340,7 @@ export default function App() {
           <Metric title="Projected IRR" value={returnMetrics.irr === null ? 'N/A' : percent(returnMetrics.irr * 100)} note={`Includes sale after ${years} years, debt payoff, and selling costs`} tone={returnMetrics.irr !== null && returnMetrics.irr >= 0 ? 'good' : 'bad'} />
           <Metric title="Equity Multiple" value={returnMetrics.equityMultiple === null ? 'N/A' : `${returnMetrics.equityMultiple.toFixed(2)}x`} note="Total cash returned divided by initial cash invested" />
           <Metric title="Year 1 Monthly Cash Flow" value={money(annualRows[0]?.cashFlow / 12)} note="After vacancy, HOA, taxes, insurance, and debt service" tone={annualRows[0]?.cashFlow >= 0 ? 'good' : 'bad'} />
+          <Metric title="Total vacancy months" value={`${inputs.vacancyMonths} months`} note={inputs.vacancyMonths > 0 ? `Spread over ${years} years` : 'Use vacancy allowance rate'} />
           <Metric title={`${years}-Year Cash Flow`} value={money(totals.cashFlow)} note="Before income taxes and depreciation effects" tone={totals.cashFlow >= 0 ? 'good' : 'bad'} />
           <Metric title="Break-Even Rent" value={money(breakEvenRent)} note="Estimated first-month rent needed for $0 cash flow" />
         </section>
@@ -299,13 +357,14 @@ export default function App() {
               </div>
 
               <FormSection title="Time horizon">
-                <RangeField label="Holding period" value={years} onChange={(value) => setYears(Math.max(1, Math.min(40, Math.round(toNumber(value, 10)))))} min={1} max={40} step={1} suffix="years" />
+                <RangeField label="Holding period" value={years} onChange={updateYears} min={1} max={40} step={1} suffix="years" />
               </FormSection>
 
               <FormSection title="Income">
                 <NumberField label="Starting monthly rent" value={inputs.rent} onChange={(value) => updateInput('rent', value)} prefix="$" />
                 <RangeField label="Annual rent growth" value={inputs.rentGrowth} onChange={(value) => updateInput('rentGrowth', value)} min={0} max={8} step={0.25} suffix="%" />
                 <RangeField label="Vacancy allowance" value={inputs.vacancyRate} onChange={(value) => updateInput('vacancyRate', value)} min={0} max={15} step={0.5} suffix="%" />
+                <RangeField label="Total vacancy months" value={inputs.vacancyMonths} onChange={(value) => updateInput('vacancyMonths', value)} min={0} max={maxVacancyMonths} step={1} suffix="months" />
               </FormSection>
 
               <FormSection title="Operating costs">
