@@ -5,8 +5,8 @@ const BASELINE = {
   rentGrowth: 3,
   vacancyRate: 5,
   vacancyMonths: 0,
-  repairsRate: 0,
-  capexRate: 0,
+  repairsMonthly: 0,
+  capexMonthly: 0,
   managementRate: 0,
   hoa: 304,
   hoaGrowth: 3,
@@ -70,8 +70,8 @@ function calculateMonthlyRows(inputs, months) {
     const hoaCost = toNumber(inputs.hoa) * Math.pow(1 + toNumber(inputs.hoaGrowth) / 100, growthYears);
     const taxCost = toNumber(inputs.propertyTax) * Math.pow(1 + toNumber(inputs.taxGrowth) / 100, growthYears);
     const insuranceCost = toNumber(inputs.insurance) * Math.pow(1 + toNumber(inputs.insuranceGrowth) / 100, growthYears);
-    const repairs = grossRent * (toNumber(inputs.repairsRate) / 100);
-    const capex = grossRent * (toNumber(inputs.capexRate) / 100);
+    const repairs = toNumber(inputs.repairsMonthly);
+    const capex = toNumber(inputs.capexMonthly);
     const management = grossRent * (toNumber(inputs.managementRate) / 100);
     const other = toNumber(inputs.otherMonthly);
 
@@ -141,19 +141,16 @@ function calculateBreakEvenRent(inputs, totalMonths = 120) {
     ? Math.min(toNumber(inputs.vacancyMonths), totalMonths) / totalMonths
     : toNumber(inputs.vacancyRate) / 100;
 
-  const variablePct =
-    vacancyPct +
-    (toNumber(inputs.repairsRate) +
-      toNumber(inputs.capexRate) +
-      toNumber(inputs.managementRate)) /
-    100;
+  const variablePct = vacancyPct + toNumber(inputs.managementRate) / 100;
 
   const fixedCosts =
     toNumber(inputs.monthlyPI) +
     toNumber(inputs.hoa) +
     toNumber(inputs.propertyTax) +
     toNumber(inputs.insurance) +
-    toNumber(inputs.otherMonthly);
+    toNumber(inputs.otherMonthly) +
+    toNumber(inputs.repairsMonthly) +
+    toNumber(inputs.capexMonthly);
 
   return fixedCosts / Math.max(0.01, 1 - variablePct);
 }
@@ -364,7 +361,15 @@ export default function App() {
                 <NumberField label="Starting monthly rent" value={inputs.rent} onChange={(value) => updateInput('rent', value)} prefix="$" />
                 <RangeField label="Annual rent growth" value={inputs.rentGrowth} onChange={(value) => updateInput('rentGrowth', value)} min={0} max={8} step={0.25} suffix="%" />
                 <RangeField label="Vacancy allowance" value={inputs.vacancyRate} onChange={(value) => updateInput('vacancyRate', value)} min={0} max={15} step={0.5} suffix="%" />
-                <RangeField label="Total vacancy months" value={inputs.vacancyMonths} onChange={(value) => updateInput('vacancyMonths', value)} min={0} max={maxVacancyMonths} step={1} suffix="months" />
+                <StepperField
+                  label="Total vacancy months"
+                  value={inputs.vacancyMonths}
+                  onChange={(value) => updateInput('vacancyMonths', value)}
+                  min={0}
+                  max={maxVacancyMonths}
+                  step={1}
+                  suffix="months"
+                />
               </FormSection>
 
               <FormSection title="Operating costs">
@@ -378,8 +383,8 @@ export default function App() {
               </FormSection>
 
               <FormSection title="Reserves and management">
-                <RangeField label="Repairs reserve" value={inputs.repairsRate} onChange={(value) => updateInput('repairsRate', value)} min={0} max={15} step={0.5} suffix="% of rent" />
-                <RangeField label="CapEx reserve" value={inputs.capexRate} onChange={(value) => updateInput('capexRate', value)} min={0} max={10} step={0.5} suffix="% of rent" />
+                <NumberField label="Monthly repairs" value={inputs.repairsMonthly} onChange={(value) => updateInput('repairsMonthly', value)} prefix="$" />
+                <NumberField label="Monthly CapEx" value={inputs.capexMonthly} onChange={(value) => updateInput('capexMonthly', value)} prefix="$" />
                 <RangeField label="Property management" value={inputs.managementRate} onChange={(value) => updateInput('managementRate', value)} min={0} max={12} step={0.5} suffix="% of rent" />
               </FormSection>
 
@@ -548,6 +553,40 @@ function RangeField({ label, value, onChange, min, max, step, suffix }) {
       </span>
       <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(event.target.value)} className="w-full accent-sky-700" />
     </label>
+  );
+}
+
+function StepperField({ label, value, onChange, min, max, step = 1, suffix = '' }) {
+  const displaySuffix = suffix.startsWith('%') ? suffix : ` ${suffix}`;
+  function changeBy(delta) {
+    onChange(Math.max(min, Math.min(max, value + delta)));
+  }
+
+  return (
+    <div className="text-sm">
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-slate-600">{label}</span>
+        <div className="inline-flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => changeBy(-step)}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={value <= min}
+          >
+            −
+          </button>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-800">{value}{displaySuffix}</span>
+          <button
+            type="button"
+            onClick={() => changeBy(step)}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={value >= max}
+          >
+            +
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -40,7 +40,7 @@ npm run build
 - `Vacancy allowance` — the percentage of rent lost to vacancy.
 - `Total vacancy months` — the total number of months without rent over the holding period. If set, this overrides the vacancy allowance rate for cash flow calculations.
 - `Monthly HOA`, `Monthly property tax`, and `Monthly insurance` — recurring operating costs.
-- `Repairs reserve`, `CapEx reserve`, and `Property management` — additional expense reserves expressed as a percent of rent.
+- `Monthly repairs`, `Monthly CapEx`, and `Property management` — actual monthly expense inputs for repairs and capital expenditures, plus management as a percent of rent.
 - `Loan balance`, `Interest rate`, and `Monthly P&I` — mortgage inputs used to calculate debt service and remaining loan balance.
 - `Purchase price`, `Initial cash invested`, `Annual appreciation`, and `Selling costs` — return assumptions used to estimate sale proceeds, IRR, and total ROI.
 
