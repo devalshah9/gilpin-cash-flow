@@ -1,6 +1,6 @@
 # Gilpin Cash Flow
 
-A small React + Vite app for modeling rental cash flow and investment returns.
+A small React + TypeScript + Vite app for modeling rental cash flow and investment returns.
 
 ## Local setup
 
@@ -24,11 +24,19 @@ Open the URL shown in the terminal (usually `http://localhost:5173`).
 npm run build
 ```
 
+### 4. Type-check
+
+```bash
+npm run typecheck
+```
+
 ## Project structure
 
-- `src/App.jsx` — main app component
-- `src/main.jsx` — React entry point
+- `src/App.tsx` — main app component and typed cash-flow model
+- `src/main.tsx` — React entry point
 - `src/index.css` — Tailwind base styles
+- `src/vite-env.d.ts` — Vite client type declarations
+- `tsconfig.json` — TypeScript configuration
 - `vite.config.js` — Vite configuration
 - `tailwind.config.js` — Tailwind CSS configuration
 - `postcss.config.js` — PostCSS configuration

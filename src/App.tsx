@@ -1,6 +1,89 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { type ReactNode, useEffect, useMemo, useState } from 'react';
 
-const BASELINE = {
+type CashFlowInputs = {
+  rent: number;
+  rentGrowth: number;
+  vacancyRate: number;
+  vacancyMonths: number;
+  repairsMonthly: number;
+  capexMonthly: number;
+  managementRate: number;
+  hoa: number;
+  hoaGrowth: number;
+  propertyTax: number;
+  taxGrowth: number;
+  insurance: number;
+  insuranceGrowth: number;
+  otherMonthly: number;
+  loanBalance: number;
+  interestRate: number;
+  monthlyPI: number;
+  purchasePrice: number;
+  initialCashInvested: number;
+  appreciationRate: number;
+  sellingCostRate: number;
+};
+
+type MonthlyRow = {
+  month: number;
+  yearNumber: number;
+  year: string;
+  monthInYear: number;
+  label: string;
+  grossRent: number;
+  vacancy: number;
+  effectiveRent: number;
+  hoaCost: number;
+  taxCost: number;
+  insuranceCost: number;
+  repairs: number;
+  capex: number;
+  management: number;
+  other: number;
+  operatingExpenses: number;
+  noi: number;
+  principal: number;
+  interest: number;
+  debtService: number;
+  cashFlow: number;
+  balance: number;
+};
+
+type AnnualRow = {
+  year: string;
+  yearNumber: number;
+  grossRent: number;
+  effectiveRent: number;
+  operatingExpenses: number;
+  noi: number;
+  debtService: number;
+  cashFlow: number;
+  principal: number;
+  interest: number;
+  endingBalance: number;
+};
+
+type ReturnMetrics = {
+  estimatedSalePrice: number;
+  sellingCosts: number;
+  netSaleProceeds: number;
+  endingLoanBalance: number;
+  totalCashFlow: number;
+  totalProfit: number;
+  irr: number | null;
+  equityMultiple: number | null;
+  totalROI: number | null;
+};
+
+type ViewMode = 'annual' | 'monthly';
+
+type SavedState = {
+  inputs: CashFlowInputs;
+  years: number;
+  view: ViewMode;
+};
+
+const BASELINE: CashFlowInputs = {
   rent: 2350,
   rentGrowth: 3,
   vacancyRate: 5,
@@ -24,12 +107,12 @@ const BASELINE = {
   sellingCostRate: 7,
 };
 
-function toNumber(value, fallback = 0) {
+function toNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function money(value, digits = 0) {
+function money(value: unknown, digits = 0): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -38,21 +121,21 @@ function money(value, digits = 0) {
   }).format(toNumber(value));
 }
 
-function percent(value, digits = 1) {
+function percent(value: unknown, digits = 1): string {
   const n = toNumber(value);
   if (!Number.isFinite(n)) return 'N/A';
   return `${n.toFixed(digits)}%`;
 }
 
-function compactMoney(value) {
+function compactMoney(value: unknown): string {
   const n = toNumber(value);
   if (Math.abs(n) >= 1000000) return `$${(n / 1000000).toFixed(1)}M`;
   if (Math.abs(n) >= 1000) return `$${Math.round(n / 1000)}k`;
   return `$${Math.round(n)}`;
 }
 
-function calculateMonthlyRows(inputs, months) {
-  const rows = [];
+function calculateMonthlyRows(inputs: CashFlowInputs, months: number): MonthlyRow[] {
+  const rows: MonthlyRow[] = [];
   let balance = toNumber(inputs.loanBalance);
   const monthlyRate = toNumber(inputs.interestRate) / 100 / 12;
 
@@ -113,11 +196,11 @@ function calculateMonthlyRows(inputs, months) {
   return rows;
 }
 
-function calculateAnnualRows(monthlyRows, years) {
+function calculateAnnualRows(monthlyRows: MonthlyRow[], years: number): AnnualRow[] {
   return Array.from({ length: years }, (_, index) => {
     const yearNumber = index + 1;
     const rows = monthlyRows.filter((row) => row.yearNumber === yearNumber);
-    const sum = (key) => rows.reduce((total, row) => total + toNumber(row[key]), 0);
+    const sum = (key: keyof MonthlyRow) => rows.reduce((total, row) => total + toNumber(row[key]), 0);
     const last = rows[rows.length - 1] || {};
 
     return {
@@ -136,7 +219,7 @@ function calculateAnnualRows(monthlyRows, years) {
   });
 }
 
-function calculateBreakEvenRent(inputs, totalMonths = 120) {
+function calculateBreakEvenRent(inputs: CashFlowInputs, totalMonths = 120): number {
   const vacancyPct = toNumber(inputs.vacancyMonths) > 0
     ? Math.min(toNumber(inputs.vacancyMonths), totalMonths) / totalMonths
     : toNumber(inputs.vacancyRate) / 100;
@@ -155,11 +238,11 @@ function calculateBreakEvenRent(inputs, totalMonths = 120) {
   return fixedCosts / Math.max(0.01, 1 - variablePct);
 }
 
-function npv(rate, cashFlows) {
+function npv(rate: number, cashFlows: number[]): number {
   return cashFlows.reduce((total, cashFlow, index) => total + cashFlow / Math.pow(1 + rate, index), 0);
 }
 
-function calculateIRR(cashFlows) {
+function calculateIRR(cashFlows: number[]): number | null {
   const hasPositive = cashFlows.some((cashFlow) => cashFlow > 0);
   const hasNegative = cashFlows.some((cashFlow) => cashFlow < 0);
   if (!hasPositive || !hasNegative) return null;
@@ -188,7 +271,7 @@ function calculateIRR(cashFlows) {
   return (low + high) / 2;
 }
 
-function calculateReturnMetrics(inputs, annualRows, years) {
+function calculateReturnMetrics(inputs: CashFlowInputs, annualRows: AnnualRow[], years: number): ReturnMetrics {
   const purchasePrice = toNumber(inputs.purchasePrice);
   const initialCashInvested = Math.max(0, toNumber(inputs.initialCashInvested));
   const appreciationRate = toNumber(inputs.appreciationRate) / 100;
@@ -227,11 +310,15 @@ function calculateReturnMetrics(inputs, annualRows, years) {
 
 const STORAGE_KEY = 'gilpinCashFlowState';
 
-function loadSavedState() {
+function loadSavedState(): SavedState | null {
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     if (!saved) return null;
-    const parsed = JSON.parse(saved);
+    const parsed = JSON.parse(saved) as Partial<{
+      inputs: Partial<CashFlowInputs>;
+      years: unknown;
+      view: unknown;
+    }>;
     return {
       inputs: { ...BASELINE, ...parsed.inputs },
       years: typeof parsed.years === 'number' ? Math.max(1, Math.min(40, parsed.years)) : 10,
@@ -254,7 +341,7 @@ export default function App() {
   const annualRows = useMemo(() => calculateAnnualRows(monthlyRows, years), [monthlyRows, years]);
 
   const totals = useMemo(() => {
-    const sum = (key) => monthlyRows.reduce((total, row) => total + toNumber(row[key]), 0);
+    const sum = (key: keyof MonthlyRow) => monthlyRows.reduce((total, row) => total + toNumber(row[key]), 0);
     const finalBalance = monthlyRows[monthlyRows.length - 1]?.balance || 0;
 
     return {
@@ -268,7 +355,7 @@ export default function App() {
   const returnMetrics = useMemo(() => calculateReturnMetrics(inputs, annualRows, years), [inputs, annualRows, years]);
   const chartRows = view === 'annual' ? annualRows : monthlyRows;
 
-  function updateInput(key, value) {
+  function updateInput(key: keyof CashFlowInputs, value: unknown) {
     const nextValue = toNumber(value);
     setInputs((current) => {
       if (key === 'vacancyMonths') {
@@ -278,7 +365,7 @@ export default function App() {
     });
   }
 
-  function updateYears(value) {
+  function updateYears(value: unknown) {
     const nextYears = Math.max(1, Math.min(40, Math.round(toNumber(value, 10))));
     setYears(nextYears);
     setInputs((current) => ({
@@ -410,7 +497,7 @@ export default function App() {
                   <h2 className="text-xl font-semibold text-slate-950">Cash Flow Trend</h2>
                   <p className="text-sm text-slate-500">Hover over the line to see the exact cash-flow value.</p>
                 </div>
-                <select value={view} onChange={(event) => setView(event.target.value)} className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium shadow-sm focus:border-sky-500 focus:outline-none">
+                <select value={view} onChange={(event) => setView(event.target.value as ViewMode)} className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium shadow-sm focus:border-sky-500 focus:outline-none">
                   <option value="annual">Annual</option>
                   <option value="monthly">Monthly</option>
                 </select>
@@ -492,11 +579,26 @@ export default function App() {
   );
 }
 
-function Panel({ children, className = '' }) {
+type ChildrenProps = {
+  children: ReactNode;
+};
+
+type PanelProps = ChildrenProps & {
+  className?: string;
+};
+
+function Panel({ children, className = '' }: PanelProps) {
   return <section className={`rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-xl shadow-slate-200/60 backdrop-blur ${className}`}>{children}</section>;
 }
 
-function Metric({ title, value, note, tone = 'neutral' }) {
+type MetricProps = {
+  title: string;
+  value: string;
+  note: string;
+  tone?: 'good' | 'bad' | 'neutral';
+};
+
+function Metric({ title, value, note, tone = 'neutral' }: MetricProps) {
   const toneClass = tone === 'good' ? 'from-emerald-50 to-white text-emerald-800' : tone === 'bad' ? 'from-rose-50 to-white text-rose-800' : 'from-sky-50 to-white text-slate-950';
   return (
     <section className={`rounded-[1.75rem] border border-white/70 bg-gradient-to-br ${toneClass} p-5 shadow-xl shadow-slate-200/60`}>
@@ -507,7 +609,12 @@ function Metric({ title, value, note, tone = 'neutral' }) {
   );
 }
 
-function ReturnItem({ label, value }) {
+type ReturnItemProps = {
+  label: string;
+  value: string;
+};
+
+function ReturnItem({ label, value }: ReturnItemProps) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
@@ -516,7 +623,11 @@ function ReturnItem({ label, value }) {
   );
 }
 
-function FormSection({ title, children }) {
+type FormSectionProps = ChildrenProps & {
+  title: string;
+};
+
+function FormSection({ title, children }: FormSectionProps) {
   return (
     <div className="space-y-3 border-t border-slate-100 pt-4 first:border-t-0 first:pt-0">
       <h3 className="font-semibold text-slate-800">{title}</h3>
@@ -525,7 +636,15 @@ function FormSection({ title, children }) {
   );
 }
 
-function NumberField({ label, value, onChange, prefix = '', suffix = '' }) {
+type NumericFieldProps = {
+  label: string;
+  value: number;
+  onChange: (value: string | number) => void;
+  prefix?: string;
+  suffix?: string;
+};
+
+function NumberField({ label, value, onChange, prefix = '', suffix = '' }: NumericFieldProps) {
   return (
     <label className="grid grid-cols-2 items-center gap-3 text-sm">
       <span className="text-slate-600">{label}</span>
@@ -543,7 +662,17 @@ function NumberField({ label, value, onChange, prefix = '', suffix = '' }) {
   );
 }
 
-function RangeField({ label, value, onChange, min, max, step, suffix }) {
+type RangeFieldProps = {
+  label: string;
+  value: number;
+  onChange: (value: string | number) => void;
+  min: number;
+  max: number;
+  step: number;
+  suffix: string;
+};
+
+function RangeField({ label, value, onChange, min, max, step, suffix }: RangeFieldProps) {
   const displaySuffix = suffix.startsWith('%') ? suffix : ` ${suffix}`;
   return (
     <label className="block space-y-2 text-sm">
@@ -556,9 +685,13 @@ function RangeField({ label, value, onChange, min, max, step, suffix }) {
   );
 }
 
-function StepperField({ label, value, onChange, min, max, step = 1, suffix = '' }) {
+type StepperFieldProps = RangeFieldProps & {
+  step?: number;
+};
+
+function StepperField({ label, value, onChange, min, max, step = 1, suffix = '' }: StepperFieldProps) {
   const displaySuffix = suffix.startsWith('%') ? suffix : ` ${suffix}`;
-  function changeBy(delta) {
+  function changeBy(delta: number) {
     onChange(Math.max(min, Math.min(max, value + delta)));
   }
 
@@ -590,16 +723,38 @@ function StepperField({ label, value, onChange, min, max, step = 1, suffix = '' 
   );
 }
 
-function TableHead({ children }) {
+function TableHead({ children }: ChildrenProps) {
   return <th className="py-3 pl-4 pr-4 font-semibold">{children}</th>;
 }
 
-function TableCell({ children, className = '' }) {
+type TableCellProps = ChildrenProps & {
+  className?: string;
+};
+
+function TableCell({ children, className = '' }: TableCellProps) {
   return <td className={`py-3 pl-4 pr-4 ${className}`}>{children}</td>;
 }
 
-function SimpleLineChart({ rows, xKey, yKey }) {
-  const [hoverIndex, setHoverIndex] = useState(null);
+type ChartRow = MonthlyRow | AnnualRow;
+
+type SimpleLineChartProps = {
+  rows: ChartRow[];
+  xKey: 'year' | 'label';
+  yKey: 'cashFlow';
+};
+
+type Point = {
+  x: number;
+  y: number;
+};
+
+function chartLabel(row: ChartRow, xKey: SimpleLineChartProps['xKey']): string {
+  if (xKey === 'label') return 'label' in row ? row.label : row.year;
+  return row.year;
+}
+
+function SimpleLineChart({ rows, xKey, yKey }: SimpleLineChartProps) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const width = 820;
   const height = 330;
   const padding = { top: 26, right: 34, bottom: 52, left: 74 };
@@ -610,7 +765,7 @@ function SimpleLineChart({ rows, xKey, yKey }) {
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
 
-  const pointFor = (row, index) => {
+  const pointFor = (row: ChartRow, index: number): Point => {
     const x = padding.left + (rows.length === 1 ? 0 : (index / (rows.length - 1)) * plotWidth);
     const y = padding.top + ((maxValue - toNumber(row[yKey])) / range) * plotHeight;
     return { x, y };
@@ -655,7 +810,7 @@ function SimpleLineChart({ rows, xKey, yKey }) {
             <circle cx={hoverPoint.x} cy={hoverPoint.y} r="6" fill="#0f172a" stroke="white" strokeWidth="3" />
             <g transform={`translate(${Math.min(Math.max(hoverPoint.x - 92, padding.left), width - padding.right - 184)}, ${Math.max(hoverPoint.y - 74, 10)})`}>
               <rect width="184" height="58" rx="14" fill="#0f172a" opacity="0.94" />
-              <text x="14" y="22" fontSize="12" fill="#cbd5e1">{hoverRow[xKey]}</text>
+              <text x="14" y="22" fontSize="12" fill="#cbd5e1">{chartLabel(hoverRow, xKey)}</text>
               <text x="14" y="44" fontSize="18" fontWeight="700" fill="white">{money(hoverRow[yKey])}</text>
             </g>
           </g>
@@ -664,7 +819,7 @@ function SimpleLineChart({ rows, xKey, yKey }) {
           const point = points[index];
           return (
             <rect
-              key={`hover-${row.label || row.year}-${index}`}
+              key={`hover-${'label' in row ? row.label : row.year}-${index}`}
               x={index === 0 ? padding.left : point.x - plotWidth / Math.max(rows.length - 1, 1) / 2}
               y={padding.top}
               width={Math.max(8, plotWidth / Math.max(rows.length - 1, 1))}
@@ -679,15 +834,34 @@ function SimpleLineChart({ rows, xKey, yKey }) {
         {rows.map((row, index) => {
           if (index % labelEvery !== 0 && index !== rows.length - 1) return null;
           const point = points[index];
-          return <text key={`${row[xKey]}-${index}`} x={point.x} y={height - 18} textAnchor={index === 0 ? 'start' : index === rows.length - 1 ? 'end' : 'middle'} fontSize="11" fill="#64748b">{row[xKey]}</text>;
+          const label = chartLabel(row, xKey);
+          return <text key={`${label}-${index}`} x={point.x} y={height - 18} textAnchor={index === 0 ? 'start' : index === rows.length - 1 ? 'end' : 'middle'} fontSize="11" fill="#64748b">{label}</text>;
         })}
       </svg>
     </div>
   );
 }
 
-function SimpleGroupedBarChart({ rows, keys, labels }) {
-  const [hoveredBar, setHoveredBar] = useState(null);
+type AnnualBarKey = 'effectiveRent' | 'operatingExpenses' | 'debtService';
+
+type SimpleGroupedBarChartProps = {
+  rows: AnnualRow[];
+  keys: AnnualBarKey[];
+  labels: string[];
+};
+
+type HoveredBar = {
+  rowIndex: number;
+  keyIndex: number;
+  label: string;
+  value: number;
+  x: number;
+  y: number;
+  year: string;
+};
+
+function SimpleGroupedBarChart({ rows, keys, labels }: SimpleGroupedBarChartProps) {
+  const [hoveredBar, setHoveredBar] = useState<HoveredBar | null>(null);
   const width = 820;
   const height = 380;
   const padding = { top: 28, right: 34, bottom: 92, left: 74 };
