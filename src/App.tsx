@@ -358,6 +358,9 @@ export default function App() {
   function updateInput(key: keyof CashFlowInputs, value: unknown) {
     const nextValue = toNumber(value);
     setInputs((current) => {
+      if (key === 'vacancyRate') {
+        return { ...current, [key]: nextValue, vacancyMonths: 0 };
+      }
       if (key === 'vacancyMonths') {
         return { ...current, [key]: Math.max(0, Math.min(nextValue, maxVacancyMonths)) };
       }
