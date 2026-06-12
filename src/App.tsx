@@ -362,7 +362,8 @@ export default function App() {
         return { ...current, [key]: nextValue, vacancyMonths: 0 };
       }
       if (key === 'vacancyMonths') {
-        return { ...current, [key]: Math.max(0, Math.min(nextValue, maxVacancyMonths)) };
+        const vacancyMonths = Math.max(0, Math.min(nextValue, maxVacancyMonths));
+        return { ...current, vacancyMonths, vacancyRate: vacancyMonths > 0 ? 0 : current.vacancyRate };
       }
       return { ...current, [key]: nextValue };
     });
@@ -460,6 +461,9 @@ export default function App() {
                   step={1}
                   suffix="months"
                 />
+                <p className="rounded-2xl bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-500">
+                  Vacancy allowance and total vacancy months are alternate modes. Changing one clears the other.
+                </p>
               </FormSection>
 
               <FormSection title="Operating costs">
